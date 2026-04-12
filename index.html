@@ -3,149 +3,161 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>The Boyfriend Punching Bag</title>
+    <title>ULTIMATE CATHARSIS</title>
     <style>
-        :root {
-            --maroon: #4a0000;
-            --bright-red: #ff3333;
-            --gold: #ffd700;
-        }
-
         body {
             margin: 0;
-            background: radial-gradient(circle, var(--maroon), #000);
-            color: white;
-            font-family: 'Comic Sans MS', cursive, sans-serif; /* For that extra "silly" feel */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
+            background: #1a0000;
             overflow: hidden;
             touch-action: none;
+            font-family: 'Arial Black', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
         }
 
-        #ui {
-            text-align: center;
-            margin-bottom: 10px;
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: radial-gradient(circle, #4a0000, #000);
+            transition: background 0.2s;
+        }
+
+        .main-target {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 150px;
+            user-select: none;
+            cursor: pointer;
             z-index: 10;
         }
 
-        h1 { margin: 0; font-size: 1.2rem; color: var(--bright-red); }
-        #counter { font-size: 2.5rem; color: var(--gold); text-shadow: 2px 2px #000; }
-
-        .ring {
-            position: relative;
-            width: 90vw;
-            height: 70vh;
-            background: rgba(255, 255, 255, 0.05);
-            border: 5px solid var(--bright-red);
-            border-radius: 30px;
-            box-shadow: inset 0 0 50px #000;
-        }
-
-        #target {
+        .fragment {
             position: absolute;
-            width: 100px;
-            height: 100px;
-            font-size: 80px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            user-select: none;
-            filter: drop-shadow(0 5px 15px rgba(0,0,0,0.5));
-        }
-
-        .shake {
-            animation: ultra-shake 0.1s infinite;
-        }
-
-        @keyframes ultra-shake {
-            0% { transform: translate(2px, 1px) rotate(0deg); }
-            20% { transform: translate(-3px, -2px) rotate(-5deg); }
-            40% { transform: translate(-1px, 2px) rotate(5deg); }
-            60% { transform: translate(3px, 1px) rotate(-2deg); }
-            100% { transform: translate(0, 0) rotate(0deg); }
-        }
-
-        .apology {
-            position: absolute;
-            color: var(--gold);
-            font-weight: bold;
-            font-style: italic;
             pointer-events: none;
-            white-space: nowrap;
-            animation: flyOff 0.6s ease-out forwards;
+            font-size: 40px;
+            z-index: 5;
+            transition: transform 0.6s ease-out, opacity 0.6s;
         }
 
-        @keyframes flyOff {
-            0% { transform: scale(1); opacity: 1; }
-            100% { transform: translateY(-100px) scale(1.5); opacity: 0; }
+        .shout {
+            position: absolute;
+            color: #ff3333;
+            font-weight: 900;
+            text-transform: uppercase;
+            pointer-events: none;
+            z-index: 20;
+            white-space: nowrap;
+            text-shadow: 2px 2px #000;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: #ffd700;
+            pointer-events: none;
+            z-index: 30;
         }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <h1>TAP TO PUNISH ME</h1>
-        <div id="counter">0</div>
+        <div style="font-size: 12px; letter-spacing: 2px;">TOTAL PENANCE</div>
+        <div id="score" style="font-size: 40px;">0</div>
     </div>
-    
-    <div class="ring" id="ring">
-        <div id="target">🥺</div>
+
+    <div id="container">
+        <div id="boss" class="main-target">👨‍Settings</div>
     </div>
 
     <script>
-        const target = document.getElementById('target');
-        const ring = document.getElementById('ring');
-        const counter = document.getElementById('counter');
-        
+        const container = document.getElementById('container');
+        const boss = document.getElementById('boss');
+        const scoreEl = document.getElementById('score');
         let score = 0;
-        const faces = ["🥺", "😵‍💫", "🤡", "😱", "🙏", "🤕"];
-        const quotes = [
-            "I'M SORRY!", "MY FAULT!", "YOU'RE RIGHT!", 
-            "HAVE MERCY!", "I'LL DO THE DISHES!", 
-            "DESERVED!", "OUCHIE!", "STOP (don't stop)"
-        ];
 
-        function teleport() {
-            const maxX = ring.clientWidth - 100;
-            const maxY = ring.clientHeight - 100;
-            target.style.left = Math.random() * maxX + 'px';
-            target.style.top = Math.random() * maxY + 'px';
-            target.innerText = faces[Math.floor(Math.random() * faces.length)];
+        const insults = ["I'M TRASH", "MY BAD", "SO STUPID", "UGH ME", "SORRY!", "PLEASE", "HEHE?", "FIX ME"];
+        const faces = ["💀", "🤡", "💩", "跪", "🙇‍♂️"];
+
+        function createExplosion(x, y) {
+            for (let i = 0; i < 8; i++) {
+                const frag = document.createElement('div');
+                frag.className = 'fragment';
+                frag.innerText = faces[Math.floor(Math.random() * faces.length)];
+                frag.style.left = x + 'px';
+                frag.style.top = y + 'px';
+                
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 100 + Math.random() * 150;
+                const tx = Math.cos(angle) * dist;
+                const ty = Math.sin(angle) * dist;
+
+                container.appendChild(frag);
+
+                requestAnimationFrame(() => {
+                    frag.style.transform = `translate(${tx}px, ${ty}px) rotate(${Math.random() * 360}deg)`;
+                    frag.style.opacity = '0';
+                });
+
+                setTimeout(() => frag.remove(), 600);
+            }
         }
 
-        function handlePunch(e) {
-            e.preventDefault();
-            score++;
-            counter.innerText = score;
-
-            // Physical feedback
-            if (navigator.vibrate) navigator.vibrate(80);
-
-            // Create apology text
+        function spawnText(x, y) {
             const text = document.createElement('div');
-            text.className = 'apology';
-            text.innerText = quotes[Math.floor(Math.random() * quotes.length)];
-            text.style.left = target.style.left;
-            text.style.top = target.style.top;
-            ring.appendChild(text);
-            setTimeout(() => text.remove(), 600);
-
-            // Visual impact
-            target.classList.add('shake');
-            setTimeout(() => {
-                target.classList.remove('shake');
-                teleport();
-            }, 100);
+            text.className = 'shout';
+            text.innerText = insults[Math.floor(Math.random() * insults.length)];
+            text.style.left = (x - 50) + 'px';
+            text.style.top = (y - 20) + 'px';
+            text.style.fontSize = (20 + Math.random() * 30) + 'px';
+            
+            container.appendChild(text);
+            
+            let pos = 0;
+            const interval = setInterval(() => {
+                pos += 4;
+                text.style.transform = `translateY(-${pos}px)`;
+                text.style.opacity = 1 - (pos/100);
+                if (pos >= 100) {
+                    clearInterval(interval);
+                    text.remove();
+                }
+            }, 16);
         }
 
-        target.addEventListener('touchstart', handlePunch);
-        target.addEventListener('mousedown', handlePunch);
+        function handleHit(e) {
+            e.preventDefault();
+            const touch = e.touches ? e.touches[0] : e;
+            const x = touch.clientX;
+            const y = touch.clientY;
 
-        teleport(); // Initial move
+            score++;
+            scoreEl.innerText = score;
+
+            // Screen Shake & Flash
+            container.style.background = '#ff0000';
+            setTimeout(() => { container.style.background = 'radial-gradient(circle, #4a0000, #000)'; }, 50);
+
+            // Haptics
+            if (navigator.vibrate) navigator.vibrate([50]);
+
+            // Visuals
+            createExplosion(x, y);
+            spawnText(x, y);
+
+            // Boss reaction
+            boss.style.transform = `translate(-50%, -50%) scale(${0.8 + Math.random() * 0.4})`;
+        }
+
+        container.addEventListener('touchstart', handleHit);
+        container.addEventListener('mousedown', handleHit);
     </script>
 </body>
 </html>
