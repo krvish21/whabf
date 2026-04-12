@@ -3,161 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ULTIMATE CATHARSIS</title>
+    <title>PROTECT THE BOYFRIEND</title>
     <style>
-        body {
-            margin: 0;
-            background: #1a0000;
-            overflow: hidden;
-            touch-action: none;
-            font-family: 'Arial Black', sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-
-        #container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            background: radial-gradient(circle, #4a0000, #000);
-            transition: background 0.2s;
-        }
-
-        .main-target {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 150px;
-            user-select: none;
-            cursor: pointer;
-            z-index: 10;
-        }
-
-        .fragment {
-            position: absolute;
-            pointer-events: none;
-            font-size: 40px;
-            z-index: 5;
-            transition: transform 0.6s ease-out, opacity 0.6s;
-        }
-
-        .shout {
-            position: absolute;
-            color: #ff3333;
-            font-weight: 900;
-            text-transform: uppercase;
-            pointer-events: none;
-            z-index: 20;
-            white-space: nowrap;
-            text-shadow: 2px 2px #000;
-        }
-
+        body { margin: 0; background: #2c0000; overflow: hidden; font-family: sans-serif; touch-action: none; }
+        canvas { display: block; background: radial-gradient(circle, #4a0000, #1a0000); }
         #ui {
-            position: absolute;
-            top: 20px;
-            width: 100%;
-            text-align: center;
-            color: #ffd700;
-            pointer-events: none;
-            z-index: 30;
+            position: absolute; top: 10px; width: 100%; text-align: center;
+            color: #ff4d4d; pointer-events: none; font-weight: bold; font-size: 20px;
         }
     </style>
 </head>
 <body>
-
-    <div id="ui">
-        <div style="font-size: 12px; letter-spacing: 2px;">TOTAL PENANCE</div>
-        <div id="score" style="font-size: 40px;">0</div>
-    </div>
-
-    <div id="container">
-        <div id="boss" class="main-target">👨‍Settings</div>
-    </div>
+    <div id="ui">SAVED FROM ANNOYANCE: <span id="score">0</span></div>
+    <canvas id="gameCanvas"></canvas>
 
     <script>
-        const container = document.getElementById('container');
-        const boss = document.getElementById('boss');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
         const scoreEl = document.getElementById('score');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
         let score = 0;
-
-        const insults = ["I'M TRASH", "MY BAD", "SO STUPID", "UGH ME", "SORRY!", "PLEASE", "HEHE?", "FIX ME"];
-        const faces = ["💀", "🤡", "💩", "跪", "🙇‍♂️"];
-
-        function createExplosion(x, y) {
-            for (let i = 0; i < 8; i++) {
-                const frag = document.createElement('div');
-                frag.className = 'fragment';
-                frag.innerText = faces[Math.floor(Math.random() * faces.length)];
-                frag.style.left = x + 'px';
-                frag.style.top = y + 'px';
-                
-                const angle = Math.random() * Math.PI * 2;
-                const dist = 100 + Math.random() * 150;
-                const tx = Math.cos(angle) * dist;
-                const ty = Math.sin(angle) * dist;
-
-                container.appendChild(frag);
-
-                requestAnimationFrame(() => {
-                    frag.style.transform = `translate(${tx}px, ${ty}px) rotate(${Math.random() * 360}deg)`;
-                    frag.style.opacity = '0';
-                });
-
-                setTimeout(() => frag.remove(), 600);
+        let items = [];
+        const player = { x: canvas.width / 2, y: canvas.height - 80, size: 60 };
+        const emojis = ["🧦", "🍔", "❓", "🎮", "😴"]; // Things you do that annoy her
+        
+        class Item {
+            constructor() {
+                this.size = 50;
+                this.x = Math.random() * (canvas.width - this.size);
+                this.y = -this.size;
+                this.speed = 2 + Math.random() * 3;
+                this.char = emojis[Math.floor(Math.random() * emojis.length)];
+            }
+            update() { this.y += this.speed; }
+            draw() {
+                ctx.font = this.size + "px serif";
+                ctx.fillText(this.char, this.x, this.y);
             }
         }
 
-        function spawnText(x, y) {
-            const text = document.createElement('div');
-            text.className = 'shout';
-            text.innerText = insults[Math.floor(Math.random() * insults.length)];
-            text.style.left = (x - 50) + 'px';
-            text.style.top = (y - 20) + 'px';
-            text.style.fontSize = (20 + Math.random() * 30) + 'px';
-            
-            container.appendChild(text);
-            
-            let pos = 0;
-            const interval = setInterval(() => {
-                pos += 4;
-                text.style.transform = `translateY(-${pos}px)`;
-                text.style.opacity = 1 - (pos/100);
-                if (pos >= 100) {
-                    clearInterval(interval);
-                    text.remove();
-                }
-            }, 16);
+        function spawnItem() {
+            if (Math.random() < 0.03) items.push(new Item());
         }
 
-        function handleHit(e) {
-            e.preventDefault();
+        function handleTouch(e) {
             const touch = e.touches ? e.touches[0] : e;
-            const x = touch.clientX;
-            const y = touch.clientY;
+            const tx = touch.clientX;
+            const ty = touch.clientY;
 
-            score++;
-            scoreEl.innerText = score;
-
-            // Screen Shake & Flash
-            container.style.background = '#ff0000';
-            setTimeout(() => { container.style.background = 'radial-gradient(circle, #4a0000, #000)'; }, 50);
-
-            // Haptics
-            if (navigator.vibrate) navigator.vibrate([50]);
-
-            // Visuals
-            createExplosion(x, y);
-            spawnText(x, y);
-
-            // Boss reaction
-            boss.style.transform = `translate(-50%, -50%) scale(${0.8 + Math.random() * 0.4})`;
+            items.forEach((item, index) => {
+                const dist = Math.hypot(item.x + 25 - tx, item.y - 25 - ty);
+                if (dist < 40) {
+                    items.splice(index, 1);
+                    score++;
+                    scoreEl.innerText = score;
+                    if (navigator.vibrate) navigator.vibrate(40);
+                }
+            });
         }
 
-        container.addEventListener('touchstart', handleHit);
-        container.addEventListener('mousedown', handleHit);
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw "You" at the bottom
+            ctx.font = "60px serif";
+            ctx.fillText("🙇‍♂️", player.x - 30, player.y);
+
+            spawnItem();
+            items.forEach((item, index) => {
+                item.update();
+                item.draw();
+                if (item.y > canvas.height) {
+                    items.splice(index, 1);
+                    // Penalize her? No, let's keep it relaxing.
+                }
+            });
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.addEventListener('touchstart', handleTouch);
+        window.addEventListener('mousedown', handleTouch);
+        gameLoop();
     </script>
 </body>
 </html>
