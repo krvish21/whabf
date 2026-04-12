@@ -3,91 +3,146 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PROTECT THE BOYFRIEND</title>
+    <title>BOUNCE THE BOYFRIEND</title>
     <style>
-        body { margin: 0; background: #2c0000; overflow: hidden; font-family: sans-serif; touch-action: none; }
-        canvas { display: block; background: radial-gradient(circle, #4a0000, #1a0000); }
+        body { margin: 0; background: #1a0000; overflow: hidden; touch-action: none; font-family: 'Arial Black', sans-serif; }
+        canvas { display: block; }
         #ui {
-            position: absolute; top: 10px; width: 100%; text-align: center;
-            color: #ff4d4d; pointer-events: none; font-weight: bold; font-size: 20px;
+            position: absolute; top: 20px; width: 100%; text-align: center;
+            color: #ff3333; pointer-events: none; text-shadow: 2px 2px #000;
         }
+        .meter-container {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            width: 80%; height: 20px; border: 2px solid #800000; border-radius: 10px;
+        }
+        #meter { width: 0%; height: 100%; background: linear-gradient(to right, #800000, #ff0000); border-radius: 8px; transition: width 0.1s; }
     </style>
 </head>
 <body>
-    <div id="ui">SAVED FROM ANNOYANCE: <span id="score">0</span></div>
-    <canvas id="gameCanvas"></canvas>
+    <div id="ui">
+        <div style="font-size: 10px; letter-spacing: 3px;">CATHARSIS LEVEL</div>
+        <div id="status" style="font-size: 24px;">MILDLY ANNOYED</div>
+    </div>
+    <div class="meter-container"><div id="meter"></div></div>
+    <canvas id="canvas"></canvas>
 
     <script>
-        const canvas = document.getElementById('gameCanvas');
+        const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const scoreEl = document.getElementById('score');
+        const meter = document.getElementById('meter');
+        const status = document.getElementById('status');
 
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        let score = 0;
-        let items = [];
-        const player = { x: canvas.width / 2, y: canvas.height - 80, size: 60 };
-        const emojis = ["🧦", "🍔", "❓", "🎮", "😴"]; // Things you do that annoy her
+        let rage = 0;
+        let shake = 0;
         
-        class Item {
-            constructor() {
-                this.size = 50;
-                this.x = Math.random() * (canvas.width - this.size);
-                this.y = -this.size;
-                this.speed = 2 + Math.random() * 3;
-                this.char = emojis[Math.floor(Math.random() * emojis.length)];
-            }
-            update() { this.y += this.speed; }
-            draw() {
-                ctx.font = this.size + "px serif";
-                ctx.fillText(this.char, this.x, this.y);
-            }
-        }
+        const bf = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            vx: 0, vy: 0,
+            size: 80,
+            emoji: "🙇‍♂️",
+            rotation: 0,
+            rv: 0
+        };
 
-        function spawnItem() {
-            if (Math.random() < 0.03) items.push(new Item());
-        }
+        const apologies = ["SORRY!", "MY BAD!", "DOING DISHES!", "YOU'RE RIGHT!", "PLEASE!", "HEHE?"];
+        let floatingTexts = [];
 
-        function handleTouch(e) {
+        function handleHit(e) {
             const touch = e.touches ? e.touches[0] : e;
-            const tx = touch.clientX;
-            const ty = touch.clientY;
+            const dx = bf.x - touch.clientX;
+            const dy = bf.y - touch.clientY;
+            const dist = Math.hypot(dx, dy);
 
-            items.forEach((item, index) => {
-                const dist = Math.hypot(item.x + 25 - tx, item.y - 25 - ty);
-                if (dist < 40) {
-                    items.splice(index, 1);
-                    score++;
-                    scoreEl.innerText = score;
-                    if (navigator.vibrate) navigator.vibrate(40);
-                }
-            });
+            if (dist < 100) {
+                // Physics Boost
+                bf.vx = (Math.random() - 0.5) * 40;
+                bf.vy = -30 - Math.random() * 20;
+                bf.rv = (Math.random() - 0.5) * 0.5;
+                
+                // Effects
+                rage = Math.min(rage + 10, 100);
+                shake = 15;
+                if (navigator.vibrate) navigator.vibrate([40, 20, 40]);
+
+                // Text
+                floatingTexts.push({
+                    x: bf.x, y: bf.y, 
+                    text: apologies[Math.floor(Math.random() * apologies.length)], 
+                    life: 1.0 
+                });
+            }
         }
 
-        function gameLoop() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        function update() {
+            // Apply Physics
+            bf.vx *= 0.98;
+            bf.vy += 1.2; // Gravity
+            bf.x += bf.vx;
+            bf.y += bf.vy;
+            bf.rotation += bf.rv;
+
+            // Bounce Walls
+            if (bf.x < 40 || bf.x > canvas.width - 40) {
+                bf.vx *= -0.8;
+                bf.x = bf.x < 40 ? 40 : canvas.width - 40;
+            }
+            if (bf.y > canvas.height - 40) {
+                bf.vy *= -0.6;
+                bf.y = canvas.height - 40;
+                bf.rv *= 0.5;
+            }
+
+            // Decay rage/shake
+            rage = Math.max(0, rage - 0.2);
+            shake *= 0.9;
+            meter.style.width = rage + "%";
+
+            if (rage > 80) { status.innerText = "UNSTOPPABLE FURY"; status.style.color = "#fff"; }
+            else if (rage > 40) { status.innerText = "GETTING IT OUT"; status.style.color = "#ff3333"; }
+            else { status.innerText = "MILDLY ANNOYED"; status.style.color = "#800000"; }
+        }
+
+        function draw() {
+            ctx.save();
+            // Screen Shake
+            if (shake > 0.1) ctx.translate(Math.random()*shake - shake/2, Math.random()*shake - shake/2);
             
-            // Draw "You" at the bottom
-            ctx.font = "60px serif";
-            ctx.fillText("🙇‍♂️", player.x - 30, player.y);
+            // BG
+            ctx.fillStyle = `rgb(${26 + rage}, 0, 0)`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            spawnItem();
-            items.forEach((item, index) => {
-                item.update();
-                item.draw();
-                if (item.y > canvas.height) {
-                    items.splice(index, 1);
-                    // Penalize her? No, let's keep it relaxing.
-                }
+            // Draw BF
+            ctx.translate(bf.x, bf.y);
+            ctx.rotate(bf.rotation);
+            ctx.font = "80px serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(rage > 70 ? "😵" : bf.emoji, 0, 0);
+            ctx.restore();
+
+            // Floating Text
+            floatingTexts.forEach((t, i) => {
+                ctx.fillStyle = `rgba(255, 215, 0, ${t.life})`;
+                ctx.font = "bold 20px Arial";
+                ctx.fillText(t.text, t.x, t.y - (1 - t.life) * 50);
+                t.life -= 0.02;
+                if (t.life <= 0) floatingTexts.splice(i, 1);
             });
-
-            requestAnimationFrame(gameLoop);
         }
 
-        window.addEventListener('touchstart', handleTouch);
-        window.addEventListener('mousedown', handleTouch);
-        gameLoop();
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        window.addEventListener('touchstart', (e) => { e.preventDefault(); handleHit(e); });
+        window.addEventListener('mousedown', handleHit);
+        loop();
     </script>
 </body>
 </html>
