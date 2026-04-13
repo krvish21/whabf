@@ -1,149 +1,198 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>THE BF BOUNCE</title>
+    <title>Neon Juggler</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a0000; touch-action: none; }
-        canvas { display: block; touch-action: none; }
-        #overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(44, 0, 0, 0.9); display: flex; flex-direction: column;
-            align-items: center; justify-content: center; z-index: 100;
-            color: #ff3333; font-family: sans-serif; text-align: center;
+        body {
+            margin: 0;
+            background: #1a1a2e;
+            color: white;
+            font-family: 'Segoe UI', sans-serif;
+            overflow: hidden;
+            touch-action: none;
         }
         #ui {
-            position: absolute; top: 20px; width: 100%; text-align: center;
-            color: #ff3333; pointer-events: none; z-index: 10; font-family: sans-serif;
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
         }
-        .btn {
-            padding: 20px 40px; background: #ff3333; color: white; border: none;
-            border-radius: 50px; font-weight: bold; font-size: 20px; cursor: pointer;
+        .score-board { font-size: 2rem; font-weight: bold; text-shadow: 0 0 10px #4cc9f0; }
+        canvas { display: block; }
+        #msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid #4cc9f0;
+        }
+        button {
+            background: #4cc9f0;
+            border: none;
+            padding: 10px 20px;
+            color: white;
+            font-size: 1.2rem;
+            border-radius: 5px;
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
 
-    <div id="overlay">
-        <h1>BABE'S RAGE ROOM</h1>
-        <p>TAP THE BOYFRIEND TO LAUNCH HIM</p>
-        <button class="btn" onclick="startGame()">START VENTING</button>
-    </div>
-
     <div id="ui">
-        <div id="status">MILDLY ANNOYED</div>
+        <div class="score-board">SCORE: <span id="score">0</span></div>
     </div>
 
-    <canvas id="canvas"></canvas>
+    <div id="msg">
+        <h1>Neon Juggler</h1>
+        <p>Tap the Left/Right side when balls glow!</p>
+        <button onclick="startGame()">START GAME</button>
+    </div>
 
-    <script>
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const overlay = document.getElementById('overlay');
-        const status = document.getElementById('status');
+    <canvas id="gameCanvas"></canvas>
 
-        let active = false;
-        let rage = 0;
-        let shake = 0;
-        let floatingTexts = [];
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const msgEl = document.getElementById('msg');
 
-        const bf = {
-            x: 0, y: 0, vx: 0, vy: 0,
-            size: 80, rotation: 0, rv: 0
-        };
+    let score = 0;
+    let balls = [];
+    let gameActive = false;
+    const gravity = 0.15;
+    const strikeZoneY = 0; // Calculated on resize
 
-        function startGame() {
-            overlay.style.display = 'none';
-            active = true;
-            resize();
-            bf.x = canvas.width / 2;
-            bf.y = canvas.height / 2;
-            loop();
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    class Ball {
+        constructor(side) {
+            this.radius = 25;
+            this.reset(side);
         }
 
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+        reset(side) {
+            this.side = side; // 0 for left, 1 for right
+            this.x = side === 0 ? canvas.width * 0.25 : canvas.width * 0.75;
+            this.y = -50;
+            this.vy = 2;
+            this.vx = 0;
+            this.isGlowing = false;
         }
 
-        window.addEventListener('resize', resize);
+        update() {
+            this.vy += gravity;
+            this.y += this.vy;
 
-        function handleInput(e) {
-            if (!active) return;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            // Highlight ball when in the strike zone (bottom 25% of screen)
+            if (this.y > canvas.height * 0.7 && this.y < canvas.height * 0.9) {
+                this.isGlowing = true;
+            } else {
+                this.isGlowing = false;
+            }
 
-            const dx = bf.x - clientX;
-            const dy = bf.y - clientY;
-            const dist = Math.hypot(dx, dy);
-
-            // Hit detection (larger for phone fingers)
-            if (dist < 120) {
-                bf.vx = (bf.x - clientX) * 0.5 + (Math.random() - 0.5) * 20;
-                bf.vy = (bf.y - clientY) * 0.5 - 20;
-                bf.rv = (Math.random() - 0.5) * 0.4;
-                
-                rage = Math.min(rage + 15, 100);
-                shake = 10;
-                if (navigator.vibrate) navigator.vibrate(50);
-
-                floatingTexts.push({
-                    x: bf.x, y: bf.y, 
-                    text: ["SORRY!", "MY BAD!", "YOU'RE RIGHT!", "OUCH!"][Math.floor(Math.random()*4)], 
-                    life: 1.0 
-                });
+            // Fail condition
+            if (this.y > canvas.height) {
+                gameOver();
             }
         }
 
-        function loop() {
-            if (!active) return;
-
-            // Physics
-            bf.vx *= 0.97;
-            bf.vy += 0.8; // Gravity
-            bf.x += bf.vx;
-            bf.y += bf.vy;
-            bf.rotation += bf.rv;
-
-            // Bounces
-            if (bf.x < 40) { bf.x = 40; bf.vx *= -0.7; }
-            if (bf.x > canvas.width - 40) { bf.x = canvas.width - 40; bf.vx *= -0.7; }
-            if (bf.y > canvas.height - 40) { bf.y = canvas.height - 40; bf.vy *= -0.5; bf.rv *= 0.8; }
-            if (bf.y < 40) { bf.y = 40; bf.vy *= -0.7; }
-
-            // State
-            rage = Math.max(0, rage - 0.3);
-            shake *= 0.9;
-
-            // Draw
-            ctx.fillStyle = `rgb(${26 + rage * 2}, 0, 0)`;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            ctx.save();
-            if (shake > 0.1) ctx.translate(Math.random()*shake, Math.random()*shake);
-            ctx.translate(bf.x, bf.y);
-            ctx.rotate(bf.rotation);
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.font = "80px serif";
-            ctx.fillText(rage > 60 ? "😵" : "🙇‍♂️", 0, 0);
-            ctx.restore();
-
-            floatingTexts.forEach((t, i) => {
-                ctx.fillStyle = `rgba(255, 215, 0, ${t.life})`;
-                ctx.font = "bold 20px sans-serif";
-                ctx.fillText(t.text, t.x, t.y - 50);
-                t.life -= 0.02;
-                if (t.life <= 0) floatingTexts.splice(i, 1);
-            });
-
-            requestAnimationFrame(loop);
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            
+            if (this.isGlowing) {
+                ctx.fillStyle = '#4ee44e';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#4ee44e';
+            } else {
+                ctx.fillStyle = '#4cc9f0';
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = '#4cc9f0';
+            }
+            
+            ctx.fill();
+            ctx.shadowBlur = 0; // Reset shadow for next draw
+            ctx.closePath();
         }
 
-        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(e); }, {passive: false});
-        canvas.addEventListener('mousedown', handleInput);
-    </script>
+        toss() {
+            if (this.isGlowing) {
+                this.vy = -12; // Throw up
+                // Cross over to the other side
+                this.side = this.side === 0 ? 1 : 0;
+                const targetX = this.side === 0 ? canvas.width * 0.25 : canvas.width * 0.75;
+                this.vx = (targetX - this.x) / 60; // Smooth transition
+                
+                score++;
+                scoreEl.innerText = score;
+                return true;
+            }
+            return false;
+        }
+    }
+
+    function startGame() {
+        score = 0;
+        scoreEl.innerText = score;
+        balls = [new Ball(0)];
+        // Add a second ball after a delay
+        setTimeout(() => { if(gameActive) balls.push(new Ball(1)) }, 2000);
+        
+        gameActive = true;
+        msgEl.style.display = 'none';
+        animate();
+    }
+
+    function gameOver() {
+        gameActive = false;
+        msgEl.style.display = 'block';
+        msgEl.innerHTML = `<h1>GAME OVER</h1><p>Final Score: ${score}</p><button onclick="startGame()">TRY AGAIN</button>`;
+    }
+
+    // Input Handling
+    window.addEventListener('touchstart', (e) => {
+        if (!gameActive) return;
+        const touchX = e.touches[0].clientX;
+        const sideClicked = touchX < canvas.width / 2 ? 0 : 1;
+
+        balls.forEach(ball => {
+            if (ball.side === sideClicked) {
+                ball.toss();
+            }
+        });
+    });
+
+    function animate() {
+        if (!gameActive) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Strike Zones
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(0, canvas.height * 0.7, canvas.width, canvas.height * 0.2);
+
+        balls.forEach(ball => {
+            ball.x += ball.vx;
+            ball.update();
+            ball.draw();
+        });
+
+        requestAnimationFrame(animate);
+    }
+</script>
 </body>
 </html>
