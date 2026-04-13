@@ -2,183 +2,214 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Death Run: Battle Board</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Night Intersection Simulation</title>
     <style>
-        body { 
-            margin: 0; background: #1a1a1a; color: white; 
-            font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; 
-            display: flex; flex-direction: column; align-items: center;
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: sans-serif;
         }
-        #ui { margin-top: 20px; text-align: center; z-index: 10; }
-        #status { font-size: 1.2rem; color: #ffcc00; margin-bottom: 10px; height: 30px; }
-        canvas { background: #222; box-shadow: 0 0 20px rgba(0,0,0,0.5); border-radius: 10px; }
-        .controls { margin-top: 20px; }
-        button { 
-            background: #e63946; border: none; padding: 15px 40px; 
-            color: white; font-size: 1.5rem; font-weight: bold; border-radius: 10px;
-            box-shadow: 0 5px #900; active-transform: translateY(4px);
+        canvas {
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            background-color: #222;
         }
-        button:active { transform: translateY(4px); box-shadow: 0 2px #900; }
     </style>
 </head>
 <body>
-
-    <div id="ui">
-        <div id="status">Player 1's Turn</div>
-        <div id="dice-val" style="font-size: 3rem; font-weight: bold;">?</div>
-    </div>
-
-    <canvas id="board"></canvas>
-
-    <div class="controls">
-        <button onclick="rollDice()">ROLL DICE</button>
-    </div>
+    <canvas id="simCanvas"></canvas>
 
 <script>
-    const canvas = document.getElementById('board');
-    const ctx = canvas.getContext('2d');
-    const statusEl = document.getElementById('status');
-    const diceEl = document.getElementById('dice-val');
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
 
-    let size = Math.min(window.innerWidth - 40, 400);
-    canvas.width = size;
-    canvas.height = size;
+canvas.width = 800;
+canvas.height = 800;
 
-    const totalTiles = 32;
-    const fatalTiles = [5, 12, 19, 26]; // Indices of death spots
-    
-    let players = [
-        { id: 1, pos: 0, color: '#4cc9f0', label: 'P1' },
-        { id: 2, pos: 0, color: '#f72585', label: 'P2' }
-    ];
-    let turn = 0;
-    let isMoving = false;
+const LANE_WIDTH = 60;
+const CAR_WIDTH = 30;
+const CAR_LENGTH = 50;
+const MAX_SPEED = 2.5;
+const SAFE_DISTANCE = 80; // Distance to start slowing down
+const STOP_DISTANCE = 40; // Distance to full stop
 
-    function getTilePos(index) {
-        // Arranges tiles in a square loop
-        const side = totalTiles / 4;
-        const spacing = size / (side + 1);
-        let x, y;
+const cars = [];
+const explosions = [];
 
-        if (index < side) { // Top
-            x = spacing + (index * spacing);
-            y = spacing;
-        } else if (index < side * 2) { // Right
-            x = size - spacing;
-            y = spacing + ((index - side) * spacing);
-        } else if (index < side * 3) { // Bottom
-            x = size - spacing - ((index - side * 2) * spacing);
-            y = size - spacing;
-        } else { // Left
-            x = spacing;
-            y = size - spacing - ((index - side * 3) * spacing);
-        }
-        return { x, y };
+class Car {
+    constructor(x, y, dir) {
+        this.x = x;
+        this.y = y;
+        this.dir = dir; // 0: Right, 1: Down, 2: Left, 3: Up
+        this.speed = MAX_SPEED;
+        this.color = `hsl(${Math.random() * 360}, 70%, 60%)`;
+        this.width = (dir % 2 === 0) ? CAR_LENGTH : CAR_WIDTH;
+        this.height = (dir % 2 === 0) ? CAR_WIDTH : CAR_LENGTH;
+        this.isBraking = false;
+        this.isCrashed = false;
     }
 
-    function drawBoard() {
-        ctx.clearRect(0, 0, size, size);
+    getBounds() {
+        return {
+            left: this.x - this.width / 2,
+            right: this.x + this.width / 2,
+            top: this.y - this.height / 2,
+            bottom: this.y + this.height / 2
+        };
+    }
 
-        // Draw Tiles
-        for (let i = 0; i < totalTiles; i++) {
-            const { x, y } = getTilePos(i);
-            const isFatal = fatalTiles.includes(i);
-            
-            ctx.beginPath();
-            ctx.fillStyle = isFatal ? '#900' : '#333';
-            ctx.strokeStyle = '#555';
-            ctx.rect(x - 18, y - 18, 36, 36);
-            ctx.fill();
-            ctx.stroke();
+    update(allCars) {
+        if (this.isCrashed) return;
 
-            if (isFatal) {
-                ctx.fillStyle = "white";
-                ctx.font = "12px Arial";
-                ctx.fillText("💀", x - 8, y + 5);
-            }
+        let closestDist = Infinity;
+        this.isBraking = false;
+
+        allCars.forEach(other => {
+            if (other === this || other.isCrashed) return;
+
+            // Simple "Smart" AI: Check distance to cars ahead in the same path or intersection
+            let dist = Infinity;
+            if (this.dir === 0 && other.x > this.x && Math.abs(other.y - this.y) < LANE_WIDTH) dist = other.x - this.x;
+            if (this.dir === 1 && other.y > this.y && Math.abs(other.x - this.x) < LANE_WIDTH) dist = other.y - this.y;
+            if (this.dir === 2 && other.x < this.x && Math.abs(other.y - this.y) < LANE_WIDTH) dist = this.x - other.x;
+            if (this.dir === 3 && other.y < this.y && Math.abs(other.x - this.x) < LANE_WIDTH) dist = this.y - other.y;
+
+            if (dist < closestDist) closestDist = dist;
+        });
+
+        // Speed Control
+        if (closestDist < STOP_DISTANCE) {
+            this.speed = 0;
+            this.isBraking = true;
+        } else if (closestDist < SAFE_DISTANCE) {
+            this.speed = MAX_SPEED * 0.3;
+            this.isBraking = true;
+        } else {
+            this.speed = Math.min(MAX_SPEED, this.speed + 0.1);
         }
 
-        // Draw Players
-        players.forEach((p, idx) => {
-            const { x, y } = getTilePos(p.pos);
-            const offset = idx * 5; // Prevent total overlapping
-            
-            ctx.beginPath();
-            ctx.arc(x + offset, y + offset, 12, 0, Math.PI * 2);
-            ctx.fillStyle = p.color;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = p.color;
-            ctx.fill();
-            ctx.shadowBlur = 0;
-            
-            ctx.fillStyle = "white";
-            ctx.font = "bold 10px Arial";
-            ctx.fillText(p.label, x + offset - 6, y + offset + 4);
+        // Move
+        if (this.dir === 0) this.x += this.speed;
+        if (this.dir === 1) this.y += this.speed;
+        if (this.dir === 2) this.x -= this.speed;
+        if (this.dir === 3) this.y -= this.speed;
+
+        // Collision Check
+        allCars.forEach(other => {
+            if (other === this || this.isCrashed) return;
+            const b1 = this.getBounds();
+            const b2 = other.getBounds();
+            if (!(b1.right < b2.left || b1.left > b2.right || b1.bottom < b2.top || b1.top > b2.bottom)) {
+                this.isCrashed = true;
+                other.isCrashed = true;
+                explosions.push({x: this.x, y: this.y, timer: 30});
+            }
         });
     }
 
-    async function rollDice() {
-        if (isMoving) return;
-        isMoving = true;
-
-        const roll = Math.floor(Math.random() * 6) + 1;
-        diceEl.innerText = roll;
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
         
-        let p = players[turn];
-        
-        // Move animation logic
-        for (let i = 0; i < roll; i++) {
-            p.pos++;
-            if (p.pos >= totalTiles) {
-                victory(p);
-                return;
-            }
-            drawBoard();
-            await new Promise(r => setTimeout(r, 200));
+        // Headlights
+        if (!this.isCrashed) {
+            ctx.beginPath();
+            const gradient = ctx.createRadialGradient(0, 0, 10, 0, 0, 150);
+            gradient.addColorStop(0, 'rgba(255, 255, 200, 0.4)');
+            gradient.addColorStop(1, 'rgba(255, 255, 200, 0)');
+            ctx.fillStyle = gradient;
+            
+            let angle = (this.dir * Math.PI) / 2;
+            ctx.moveTo(0, 0);
+            ctx.arc(0, 0, 150, angle - 0.4, angle + 0.4);
+            ctx.fill();
         }
 
-        checkLogic(p);
-    }
+        // Car Body
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
 
-    function checkLogic(p) {
-        // 1. Check Fatal Spots
-        if (fatalTiles.includes(p.pos)) {
-            statusEl.innerText = `DEAD! P${p.id} back to start!`;
-            p.pos = 0;
-        } 
+        // Brake Lights
+        ctx.fillStyle = this.isBraking ? '#ff0000' : '#550000';
+        if (this.dir === 0) ctx.fillRect(-this.width/2, -this.height/2, 4, this.height);
+        if (this.dir === 1) ctx.fillRect(-this.width/2, -this.height/2, this.width, 4);
+        if (this.dir === 2) ctx.fillRect(this.width/2 - 4, -this.height/2, 4, this.height);
+        if (this.dir === 3) ctx.fillRect(-this.width/2, this.height/2 - 4, this.width, 4);
+
+        ctx.restore();
+    }
+}
+
+function drawRoad() {
+    ctx.fillStyle = '#333'; // Asphalt
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.fillStyle = '#444';
+    ctx.fillRect(canvas.width/2 - LANE_WIDTH, 0, LANE_WIDTH * 2, canvas.height);
+    ctx.fillRect(0, canvas.height/2 - LANE_WIDTH, canvas.width, LANE_WIDTH * 2);
+
+    // Markings
+    ctx.strokeStyle = '#fff';
+    ctx.setLineDash([20, 20]);
+    ctx.lineWidth = 2;
+    
+    ctx.beginPath();
+    ctx.moveTo(canvas.width/2, 0); ctx.lineTo(canvas.width/2, canvas.height);
+    ctx.moveTo(0, canvas.height/2); ctx.lineTo(canvas.width, canvas.height/2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function spawnCar() {
+    const dir = Math.floor(Math.random() * 4);
+    let x, y;
+    const offset = LANE_WIDTH / 2;
+
+    if (dir === 0) { x = -50; y = canvas.height/2 + offset; }
+    if (dir === 1) { x = canvas.width/2 - offset; y = -50; }
+    if (dir === 2) { x = canvas.width + 50; y = canvas.height/2 - offset; }
+    if (dir === 3) { x = canvas.width/2 + offset; y = canvas.height + 50; }
+
+    // Prevent spawning on top of another car
+    const conflict = cars.some(c => Math.hypot(c.x - x, c.y - y) < 100);
+    if (!conflict) cars.push(new Car(x, y, dir));
+}
+
+function animate() {
+    drawRoad();
+
+    if (Math.random() < 0.03) spawnCar();
+
+    for (let i = cars.length - 1; i >= 0; i--) {
+        cars[i].update(cars);
+        cars[i].draw();
         
-        // 2. Check Attacks
-        let opponent = players.find(other => other.id !== p.id && other.pos === p.pos);
-        if (opponent && p.pos !== 0) {
-            statusEl.innerText = `ATTACK! P${p.id} kicked P${opponent.id}!`;
-            opponent.pos = Math.max(0, opponent.pos - 5);
+        // Cleanup off-screen
+        if (cars[i].x < -100 || cars[i].x > canvas.width + 100 || 
+            cars[i].y < -100 || cars[i].y > canvas.height + 100) {
+            cars.splice(i, 1);
         }
-
-        // Switch turn
-        turn = (turn + 1) % players.length;
-        if (statusEl.innerText.indexOf('!') === -1) {
-            statusEl.innerText = `Player ${players[turn].id}'s Turn`;
-        }
-        
-        isMoving = false;
-        drawBoard();
     }
 
-    function victory(p) {
-        statusEl.innerText = `PLAYER ${p.id} WINS!`;
-        diceEl.innerText = "🏆";
-        // Reset after 3 seconds
-        setTimeout(() => {
-            players.forEach(player => player.pos = 0);
-            turn = 0;
-            isMoving = false;
-            statusEl.innerText = "Player 1's Turn";
-            drawBoard();
-        }, 3000);
-    }
+    // Draw explosions
+    explosions.forEach((exp, index) => {
+        ctx.fillStyle = 'red';
+        ctx.beginPath();
+        ctx.arc(exp.x, exp.y, 20 + Math.random() * 10, 0, Math.PI * 2);
+        ctx.fill();
+        exp.timer--;
+        if (exp.timer <= 0) explosions.splice(index, 1);
+    });
 
-    drawBoard();
+    requestAnimationFrame(animate);
+}
+
+animate();
 </script>
 </body>
 </html>
