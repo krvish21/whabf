@@ -3,73 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Neon Juggler</title>
+    <title>Sling Juggler Pro</title>
     <style>
-        body {
-            margin: 0;
-            background: #1a1a2e;
-            color: white;
-            font-family: 'Segoe UI', sans-serif;
-            overflow: hidden;
-            touch-action: none;
-        }
-        #ui {
-            position: absolute;
-            top: 20px;
-            width: 100%;
-            text-align: center;
-            pointer-events: none;
-            z-index: 10;
-        }
-        .score-board { font-size: 2rem; font-weight: bold; text-shadow: 0 0 10px #4cc9f0; }
+        body { margin: 0; background: #0f0c29; overflow: hidden; font-family: 'Arial Black', sans-serif; touch-action: none; }
         canvas { display: block; }
-        #msg {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            background: rgba(0,0,0,0.8);
-            padding: 20px;
-            border-radius: 15px;
-            border: 2px solid #4cc9f0;
+        #ui {
+            position: absolute; top: 20px; width: 100%; text-align: center;
+            color: #00d2ff; pointer-events: none; text-shadow: 0 0 15px #00d2ff;
+        }
+        #score { font-size: 3rem; }
+        #menu {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9); padding: 30px; border-radius: 20px;
+            border: 3px solid #ff0055; text-align: center; color: white; z-index: 100;
         }
         button {
-            background: #4cc9f0;
-            border: none;
-            padding: 10px 20px;
-            color: white;
-            font-size: 1.2rem;
-            border-radius: 5px;
-            margin-top: 10px;
+            background: #ff0055; border: none; padding: 15px 40px;
+            color: white; font-size: 1.5rem; border-radius: 50px; cursor: pointer;
+            box-shadow: 0 0 20px #ff0055; margin-top: 20px;
         }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <div class="score-board">SCORE: <span id="score">0</span></div>
+        <div id="score">0</div>
+        <div id="combo">COMBO x1</div>
     </div>
 
-    <div id="msg">
-        <h1>Neon Juggler</h1>
-        <p>Tap the Left/Right side when balls glow!</p>
-        <button onclick="startGame()">START GAME</button>
+    <div id="menu">
+        <h1 style="margin:0; color:#ff0055;">SLING JUGGLER</h1>
+        <p>Grab balls & flick them up!<br>Don't let them hit the floor.</p>
+        <button onclick="initGame()">START</button>
     </div>
 
-    <canvas id="gameCanvas"></canvas>
+    <canvas id="canvas"></canvas>
 
 <script>
-    const canvas = document.getElementById('gameCanvas');
+    const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const scoreEl = document.getElementById('score');
-    const msgEl = document.getElementById('msg');
+    const comboEl = document.getElementById('combo');
+    const menu = document.getElementById('menu');
 
-    let score = 0;
     let balls = [];
-    let gameActive = false;
-    const gravity = 0.15;
-    const strikeZoneY = 0; // Calculated on resize
+    let score = 0;
+    let gameRunning = false;
+    let gravity = 0.25;
+    let grabbedBall = null;
+    let lastMousePos = { x: 0, y: 0 };
+    let mouseVel = { x: 0, y: 0 };
 
     function resize() {
         canvas.width = window.innerWidth;
@@ -79,119 +62,154 @@
     resize();
 
     class Ball {
-        constructor(side) {
-            this.radius = 25;
-            this.reset(side);
-        }
-
-        reset(side) {
-            this.side = side; // 0 for left, 1 for right
-            this.x = side === 0 ? canvas.width * 0.25 : canvas.width * 0.75;
-            this.y = -50;
-            this.vy = 2;
-            this.vx = 0;
-            this.isGlowing = false;
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.radius = 35;
+            this.vx = (Math.random() - 0.5) * 10;
+            this.vy = -10;
+            this.color = '#00d2ff';
+            this.isGrabbed = false;
+            this.trail = [];
         }
 
         update() {
-            this.vy += gravity;
-            this.y += this.vy;
-
-            // Highlight ball when in the strike zone (bottom 25% of screen)
-            if (this.y > canvas.height * 0.7 && this.y < canvas.height * 0.9) {
-                this.isGlowing = true;
+            if (this.isGrabbed) {
+                this.vx = 0;
+                this.vy = 0;
             } else {
-                this.isGlowing = false;
+                this.vy += gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wall Bounce
+                if (this.x - this.radius < 0 || this.x + this.radius > canvas.width) {
+                    this.vx *= -0.8;
+                    this.x = this.x < this.radius ? this.radius : canvas.width - this.radius;
+                }
             }
 
-            // Fail condition
-            if (this.y > canvas.height) {
-                gameOver();
-            }
+            // Update Trail
+            this.trail.push({x: this.x, y: this.y});
+            if (this.trail.length > 10) this.trail.shift();
         }
 
         draw() {
+            // Draw Trail
+            this.trail.forEach((t, i) => {
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, this.radius * (i/10), 0, Math.PI*2);
+                ctx.fillStyle = `rgba(0, 210, 255, ${i/20})`;
+                ctx.fill();
+            });
+
             ctx.beginPath();
             ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
             
-            if (this.isGlowing) {
-                ctx.fillStyle = '#4ee44e';
+            // Visual feedback: Red if falling fast/near bottom, Gold if held
+            if (this.isGrabbed) {
+                ctx.fillStyle = '#ffcc00';
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = '#ffcc00';
+            } else if (this.y > canvas.height * 0.7 && this.vy > 0) {
+                ctx.fillStyle = '#ff0055';
                 ctx.shadowBlur = 20;
-                ctx.shadowColor = '#4ee44e';
+                ctx.shadowColor = '#ff0055';
+                // Slight shake effect
+                this.x += Math.sin(Date.now()) * 2;
             } else {
-                ctx.fillStyle = '#4cc9f0';
-                ctx.shadowBlur = 5;
-                ctx.shadowColor = '#4cc9f0';
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
             }
             
             ctx.fill();
-            ctx.shadowBlur = 0; // Reset shadow for next draw
-            ctx.closePath();
-        }
-
-        toss() {
-            if (this.isGlowing) {
-                this.vy = -12; // Throw up
-                // Cross over to the other side
-                this.side = this.side === 0 ? 1 : 0;
-                const targetX = this.side === 0 ? canvas.width * 0.25 : canvas.width * 0.75;
-                this.vx = (targetX - this.x) / 60; // Smooth transition
-                
-                score++;
-                scoreEl.innerText = score;
-                return true;
-            }
-            return false;
+            ctx.shadowBlur = 0;
         }
     }
 
-    function startGame() {
+    function spawnBall() {
+        balls.push(new Ball(canvas.width / 2, canvas.height - 100));
+    }
+
+    function initGame() {
         score = 0;
-        scoreEl.innerText = score;
-        balls = [new Ball(0)];
-        // Add a second ball after a delay
-        setTimeout(() => { if(gameActive) balls.push(new Ball(1)) }, 2000);
+        balls = [];
+        gameRunning = true;
+        menu.style.display = 'none';
+        spawnBall();
+        // Difficulty increase: add more balls over time
+        setTimeout(spawnBall, 5000);
+        setTimeout(spawnBall, 15000);
+        update();
+    }
+
+    function handleInput(e) {
+        if (!gameRunning) return;
+        const t = e.touches ? e.touches[0] : e;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = t.clientX - rect.left;
+        const mouseY = t.clientY - rect.top;
+
+        if (e.type === 'touchstart' || e.type === 'mousedown') {
+            balls.forEach(ball => {
+                const dist = Math.hypot(ball.x - mouseX, ball.y - mouseY);
+                if (dist < ball.radius * 2) {
+                    ball.isGrabbed = true;
+                    grabbedBall = ball;
+                }
+            });
+        } 
         
-        gameActive = true;
-        msgEl.style.display = 'none';
-        animate();
-    }
+        if ((e.type === 'touchmove' || e.type === 'mousemove') && grabbedBall) {
+            mouseVel.x = mouseX - lastMousePos.x;
+            mouseVel.y = mouseY - lastMousePos.y;
+            grabbedBall.x = mouseX;
+            grabbedBall.y = mouseY;
+        }
 
-    function gameOver() {
-        gameActive = false;
-        msgEl.style.display = 'block';
-        msgEl.innerHTML = `<h1>GAME OVER</h1><p>Final Score: ${score}</p><button onclick="startGame()">TRY AGAIN</button>`;
-    }
-
-    // Input Handling
-    window.addEventListener('touchstart', (e) => {
-        if (!gameActive) return;
-        const touchX = e.touches[0].clientX;
-        const sideClicked = touchX < canvas.width / 2 ? 0 : 1;
-
-        balls.forEach(ball => {
-            if (ball.side === sideClicked) {
-                ball.toss();
+        if (e.type === 'touchend' || e.type === 'mouseup') {
+            if (grabbedBall) {
+                grabbedBall.isGrabbed = false;
+                grabbedBall.vx = mouseVel.x * 0.8;
+                grabbedBall.vy = mouseVel.y * 0.8;
+                
+                if (grabbedBall.vy < -5) {
+                    score += 10;
+                    scoreEl.innerText = score;
+                }
+                grabbedBall = null;
             }
-        });
-    });
+        }
 
-    function animate() {
-        if (!gameActive) return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        lastMousePos = { x: mouseX, y: mouseY };
+    }
 
-        // Draw Strike Zones
-        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(0, canvas.height * 0.7, canvas.width, canvas.height * 0.2);
+    window.addEventListener('mousedown', handleInput);
+    window.addEventListener('mousemove', handleInput);
+    window.addEventListener('mouseup', handleInput);
+    window.addEventListener('touchstart', handleInput);
+    window.addEventListener('touchmove', handleInput);
+    window.addEventListener('touchend', handleInput);
 
-        balls.forEach(ball => {
-            ball.x += ball.vx;
+    function update() {
+        if (!gameRunning) return;
+        ctx.fillStyle = 'rgba(15, 12, 41, 0.4)'; // Motion blur effect
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        balls.forEach((ball, index) => {
             ball.update();
             ball.draw();
+
+            // Game Over Condition
+            if (ball.y - ball.radius > canvas.height) {
+                gameRunning = false;
+                menu.style.display = 'block';
+                menu.innerHTML = `<h1>DROPPED!</h1><p>Score: ${score}</p><button onclick="initGame()">RETRY</button>`;
+            }
         });
 
-        requestAnimationFrame(animate);
+        requestAnimationFrame(update);
     }
 </script>
 </body>
