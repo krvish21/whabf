@@ -3,214 +3,182 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sling Juggler Pro</title>
+    <title>Death Run: Battle Board</title>
     <style>
-        body { margin: 0; background: #0f0c29; overflow: hidden; font-family: 'Arial Black', sans-serif; touch-action: none; }
-        canvas { display: block; }
-        #ui {
-            position: absolute; top: 20px; width: 100%; text-align: center;
-            color: #00d2ff; pointer-events: none; text-shadow: 0 0 15px #00d2ff;
+        body { 
+            margin: 0; background: #1a1a1a; color: white; 
+            font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; 
+            display: flex; flex-direction: column; align-items: center;
         }
-        #score { font-size: 3rem; }
-        #menu {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9); padding: 30px; border-radius: 20px;
-            border: 3px solid #ff0055; text-align: center; color: white; z-index: 100;
+        #ui { margin-top: 20px; text-align: center; z-index: 10; }
+        #status { font-size: 1.2rem; color: #ffcc00; margin-bottom: 10px; height: 30px; }
+        canvas { background: #222; box-shadow: 0 0 20px rgba(0,0,0,0.5); border-radius: 10px; }
+        .controls { margin-top: 20px; }
+        button { 
+            background: #e63946; border: none; padding: 15px 40px; 
+            color: white; font-size: 1.5rem; font-weight: bold; border-radius: 10px;
+            box-shadow: 0 5px #900; active-transform: translateY(4px);
         }
-        button {
-            background: #ff0055; border: none; padding: 15px 40px;
-            color: white; font-size: 1.5rem; border-radius: 50px; cursor: pointer;
-            box-shadow: 0 0 20px #ff0055; margin-top: 20px;
-        }
+        button:active { transform: translateY(4px); box-shadow: 0 2px #900; }
     </style>
 </head>
 <body>
 
     <div id="ui">
-        <div id="score">0</div>
-        <div id="combo">COMBO x1</div>
+        <div id="status">Player 1's Turn</div>
+        <div id="dice-val" style="font-size: 3rem; font-weight: bold;">?</div>
     </div>
 
-    <div id="menu">
-        <h1 style="margin:0; color:#ff0055;">SLING JUGGLER</h1>
-        <p>Grab balls & flick them up!<br>Don't let them hit the floor.</p>
-        <button onclick="initGame()">START</button>
-    </div>
+    <canvas id="board"></canvas>
 
-    <canvas id="canvas"></canvas>
+    <div class="controls">
+        <button onclick="rollDice()">ROLL DICE</button>
+    </div>
 
 <script>
-    const canvas = document.getElementById('canvas');
+    const canvas = document.getElementById('board');
     const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('score');
-    const comboEl = document.getElementById('combo');
-    const menu = document.getElementById('menu');
+    const statusEl = document.getElementById('status');
+    const diceEl = document.getElementById('dice-val');
 
-    let balls = [];
-    let score = 0;
-    let gameRunning = false;
-    let gravity = 0.25;
-    let grabbedBall = null;
-    let lastMousePos = { x: 0, y: 0 };
-    let mouseVel = { x: 0, y: 0 };
+    let size = Math.min(window.innerWidth - 40, 400);
+    canvas.width = size;
+    canvas.height = size;
 
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+    const totalTiles = 32;
+    const fatalTiles = [5, 12, 19, 26]; // Indices of death spots
+    
+    let players = [
+        { id: 1, pos: 0, color: '#4cc9f0', label: 'P1' },
+        { id: 2, pos: 0, color: '#f72585', label: 'P2' }
+    ];
+    let turn = 0;
+    let isMoving = false;
+
+    function getTilePos(index) {
+        // Arranges tiles in a square loop
+        const side = totalTiles / 4;
+        const spacing = size / (side + 1);
+        let x, y;
+
+        if (index < side) { // Top
+            x = spacing + (index * spacing);
+            y = spacing;
+        } else if (index < side * 2) { // Right
+            x = size - spacing;
+            y = spacing + ((index - side) * spacing);
+        } else if (index < side * 3) { // Bottom
+            x = size - spacing - ((index - side * 2) * spacing);
+            y = size - spacing;
+        } else { // Left
+            x = spacing;
+            y = size - spacing - ((index - side * 3) * spacing);
+        }
+        return { x, y };
     }
-    window.addEventListener('resize', resize);
-    resize();
 
-    class Ball {
-        constructor(x, y) {
-            this.x = x;
-            this.y = y;
-            this.radius = 35;
-            this.vx = (Math.random() - 0.5) * 10;
-            this.vy = -10;
-            this.color = '#00d2ff';
-            this.isGrabbed = false;
-            this.trail = [];
-        }
+    function drawBoard() {
+        ctx.clearRect(0, 0, size, size);
 
-        update() {
-            if (this.isGrabbed) {
-                this.vx = 0;
-                this.vy = 0;
-            } else {
-                this.vy += gravity;
-                this.x += this.vx;
-                this.y += this.vy;
-
-                // Wall Bounce
-                if (this.x - this.radius < 0 || this.x + this.radius > canvas.width) {
-                    this.vx *= -0.8;
-                    this.x = this.x < this.radius ? this.radius : canvas.width - this.radius;
-                }
-            }
-
-            // Update Trail
-            this.trail.push({x: this.x, y: this.y});
-            if (this.trail.length > 10) this.trail.shift();
-        }
-
-        draw() {
-            // Draw Trail
-            this.trail.forEach((t, i) => {
-                ctx.beginPath();
-                ctx.arc(t.x, t.y, this.radius * (i/10), 0, Math.PI*2);
-                ctx.fillStyle = `rgba(0, 210, 255, ${i/20})`;
-                ctx.fill();
-            });
-
+        // Draw Tiles
+        for (let i = 0; i < totalTiles; i++) {
+            const { x, y } = getTilePos(i);
+            const isFatal = fatalTiles.includes(i);
+            
             ctx.beginPath();
-            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-            
-            // Visual feedback: Red if falling fast/near bottom, Gold if held
-            if (this.isGrabbed) {
-                ctx.fillStyle = '#ffcc00';
-                ctx.shadowBlur = 30;
-                ctx.shadowColor = '#ffcc00';
-            } else if (this.y > canvas.height * 0.7 && this.vy > 0) {
-                ctx.fillStyle = '#ff0055';
-                ctx.shadowBlur = 20;
-                ctx.shadowColor = '#ff0055';
-                // Slight shake effect
-                this.x += Math.sin(Date.now()) * 2;
-            } else {
-                ctx.fillStyle = this.color;
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = this.color;
+            ctx.fillStyle = isFatal ? '#900' : '#333';
+            ctx.strokeStyle = '#555';
+            ctx.rect(x - 18, y - 18, 36, 36);
+            ctx.fill();
+            ctx.stroke();
+
+            if (isFatal) {
+                ctx.fillStyle = "white";
+                ctx.font = "12px Arial";
+                ctx.fillText("💀", x - 8, y + 5);
             }
+        }
+
+        // Draw Players
+        players.forEach((p, idx) => {
+            const { x, y } = getTilePos(p.pos);
+            const offset = idx * 5; // Prevent total overlapping
             
+            ctx.beginPath();
+            ctx.arc(x + offset, y + offset, 12, 0, Math.PI * 2);
+            ctx.fillStyle = p.color;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = p.color;
             ctx.fill();
             ctx.shadowBlur = 0;
+            
+            ctx.fillStyle = "white";
+            ctx.font = "bold 10px Arial";
+            ctx.fillText(p.label, x + offset - 6, y + offset + 4);
+        });
+    }
+
+    async function rollDice() {
+        if (isMoving) return;
+        isMoving = true;
+
+        const roll = Math.floor(Math.random() * 6) + 1;
+        diceEl.innerText = roll;
+        
+        let p = players[turn];
+        
+        // Move animation logic
+        for (let i = 0; i < roll; i++) {
+            p.pos++;
+            if (p.pos >= totalTiles) {
+                victory(p);
+                return;
+            }
+            drawBoard();
+            await new Promise(r => setTimeout(r, 200));
         }
+
+        checkLogic(p);
     }
 
-    function spawnBall() {
-        balls.push(new Ball(canvas.width / 2, canvas.height - 100));
-    }
-
-    function initGame() {
-        score = 0;
-        balls = [];
-        gameRunning = true;
-        menu.style.display = 'none';
-        spawnBall();
-        // Difficulty increase: add more balls over time
-        setTimeout(spawnBall, 5000);
-        setTimeout(spawnBall, 15000);
-        update();
-    }
-
-    function handleInput(e) {
-        if (!gameRunning) return;
-        const t = e.touches ? e.touches[0] : e;
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = t.clientX - rect.left;
-        const mouseY = t.clientY - rect.top;
-
-        if (e.type === 'touchstart' || e.type === 'mousedown') {
-            balls.forEach(ball => {
-                const dist = Math.hypot(ball.x - mouseX, ball.y - mouseY);
-                if (dist < ball.radius * 2) {
-                    ball.isGrabbed = true;
-                    grabbedBall = ball;
-                }
-            });
+    function checkLogic(p) {
+        // 1. Check Fatal Spots
+        if (fatalTiles.includes(p.pos)) {
+            statusEl.innerText = `DEAD! P${p.id} back to start!`;
+            p.pos = 0;
         } 
         
-        if ((e.type === 'touchmove' || e.type === 'mousemove') && grabbedBall) {
-            mouseVel.x = mouseX - lastMousePos.x;
-            mouseVel.y = mouseY - lastMousePos.y;
-            grabbedBall.x = mouseX;
-            grabbedBall.y = mouseY;
+        // 2. Check Attacks
+        let opponent = players.find(other => other.id !== p.id && other.pos === p.pos);
+        if (opponent && p.pos !== 0) {
+            statusEl.innerText = `ATTACK! P${p.id} kicked P${opponent.id}!`;
+            opponent.pos = Math.max(0, opponent.pos - 5);
         }
 
-        if (e.type === 'touchend' || e.type === 'mouseup') {
-            if (grabbedBall) {
-                grabbedBall.isGrabbed = false;
-                grabbedBall.vx = mouseVel.x * 0.8;
-                grabbedBall.vy = mouseVel.y * 0.8;
-                
-                if (grabbedBall.vy < -5) {
-                    score += 10;
-                    scoreEl.innerText = score;
-                }
-                grabbedBall = null;
-            }
+        // Switch turn
+        turn = (turn + 1) % players.length;
+        if (statusEl.innerText.indexOf('!') === -1) {
+            statusEl.innerText = `Player ${players[turn].id}'s Turn`;
         }
-
-        lastMousePos = { x: mouseX, y: mouseY };
+        
+        isMoving = false;
+        drawBoard();
     }
 
-    window.addEventListener('mousedown', handleInput);
-    window.addEventListener('mousemove', handleInput);
-    window.addEventListener('mouseup', handleInput);
-    window.addEventListener('touchstart', handleInput);
-    window.addEventListener('touchmove', handleInput);
-    window.addEventListener('touchend', handleInput);
-
-    function update() {
-        if (!gameRunning) return;
-        ctx.fillStyle = 'rgba(15, 12, 41, 0.4)'; // Motion blur effect
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        balls.forEach((ball, index) => {
-            ball.update();
-            ball.draw();
-
-            // Game Over Condition
-            if (ball.y - ball.radius > canvas.height) {
-                gameRunning = false;
-                menu.style.display = 'block';
-                menu.innerHTML = `<h1>DROPPED!</h1><p>Score: ${score}</p><button onclick="initGame()">RETRY</button>`;
-            }
-        });
-
-        requestAnimationFrame(update);
+    function victory(p) {
+        statusEl.innerText = `PLAYER ${p.id} WINS!`;
+        diceEl.innerText = "🏆";
+        // Reset after 3 seconds
+        setTimeout(() => {
+            players.forEach(player => player.pos = 0);
+            turn = 0;
+            isMoving = false;
+            statusEl.innerText = "Player 1's Turn";
+            drawBoard();
+        }, 3000);
     }
+
+    drawBoard();
 </script>
 </body>
 </html>
